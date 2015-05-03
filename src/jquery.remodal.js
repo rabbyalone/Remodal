@@ -84,6 +84,22 @@
   };
 
   /**
+   * Is animation supported?
+   * @private
+   * @const
+   * @type {Boolean}
+   */
+  var IS_ANIMATION = (function() {
+    var style = document.createElement('div').style;
+
+    return style.animationName &&
+      style.WebkitAnimationName &&
+      style.MozAnimationName &&
+      style.msAnimationName &&
+      style.OAnimationName;
+  })();
+
+  /**
    * Current modal
    * @private
    * @type {Remodal}
@@ -101,9 +117,20 @@
    * Returns an animation duration
    * @private
    * @param {jQuery} $elem
-   * @return {Number}
+   * @returns {Number}
    */
   function getAnimationDuration($elem) {
+    if (
+      IS_ANIMATION &&
+      $elem.css('animation-name') === 'none' &&
+      $elem.css('-webkit-animation-name') === 'none' &&
+      $elem.css('-moz-animation-name') === 'none' &&
+      $elem.css('-o-animation-name') === 'none' &&
+      $elem.css('-ms-animation-name') === 'none'
+    ) {
+      return 0;
+    }
+
     var duration = $elem.css('animation-duration') ||
         $elem.css('-webkit-animation-duration') ||
         $elem.css('-moz-animation-duration') ||
@@ -136,20 +163,20 @@
 
     // The 'duration' size is the same as the 'delay' size
     for (i = 0, len = duration.length, max = Number.NEGATIVE_INFINITY; i < len; i++) {
-      num = parseFloat(duration[i]) * parseInt(iterationCount[i]) + parseFloat(delay[i]);
+      num = parseFloat(duration[i]) * parseInt(iterationCount[i], 10) + parseFloat(delay[i]);
 
       if (num > max) {
         max = num;
       }
     }
 
-    return num;
+    return num * 1000;
   }
 
   /**
    * Returns a scrollbar width
    * @private
-   * @return {Number}
+   * @returns {Number}
    */
   function getScrollbarWidth() {
     if ($(document.body).height() <= $(window).height()) {
@@ -271,36 +298,10 @@
    * @param {Remodal} instance
    */
   function callAfterAnimation(fn, instance) {
-
-    // Element with the longest animation
-    var $observableElement = getAnimationDuration(instance.$modal) > getAnimationDuration(instance.$overlay) ?
-      instance.$modal : instance.$overlay;
-    var isAnimationStarted = false;
-
-    $observableElement.one(ANIMATIONSTART_EVENTS, function() {
-      isAnimationStarted = true;
-
-      $observableElement.one(ANIMATIONEND_EVENTS, function(e) {
-
-        // Ignore child nodes
-        if (e.target !== this) {
-          return;
-        }
-
-        fn();
-      });
-    });
-
-    // Check after some time if the animation is started
-    setTimeout(function() {
-      if (isAnimationStarted) {
-        return;
-      }
-
-      // If the 'animationstart' event wasn't triggered
-      $observableElement.off(ANIMATIONSTART_EVENTS + ' ' + ANIMATIONEND_EVENTS);
-      fn();
-    }, 25);
+    setTimeout(fn,
+      Math.max(getAnimationDuration(instance.$modal),
+        getAnimationDuration(instance.$overlay),
+        getAnimationDuration(instance.$bg)));
   }
 
   /**
@@ -500,11 +501,10 @@
     remodal.$overlay.addClass(remodal.settings.modifier).show();
     remodal.$wrapper.show().scrollTop(0);
 
+    setState(remodal, STATES.OPENING);
     callAfterAnimation(function() {
       setState(remodal, STATES.OPENED);
     }, remodal);
-
-    setState(remodal, STATES.OPENING);
   };
 
   /**
@@ -528,6 +528,7 @@
       $(window).scrollTop(scrollTop);
     }
 
+    setState(remodal, STATES.CLOSING, false, reason);
     callAfterAnimation(function() {
       remodal.$bg.removeClass(remodal.settings.modifier);
       remodal.$overlay.removeClass(remodal.settings.modifier).hide();
@@ -536,8 +537,6 @@
 
       setState(remodal, STATES.CLOSED, false, reason);
     }, remodal);
-
-    setState(remodal, STATES.CLOSING, false, reason);
   };
 
   /**
